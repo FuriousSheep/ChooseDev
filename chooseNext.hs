@@ -1,10 +1,10 @@
 module Main where
 
 {-
-1 : enter a list manually
-2 : get a random element from the list
-3 : get and remove the element from the list, while incrementing the session count
-4 : restart
+1 : enter a list manually - DONE
+2 : get a random element from the list - DONE
+3 : get and remove the element from the list, while incrementing the session count - DONE
+4 : restart - DONE
 4 : get a list from a file
 
 -}
@@ -14,24 +14,18 @@ import Data.Time.Clock
 import Data.Time.Calendar (fromGregorian, dayOfWeek, DayOfWeek(..), toGregorian)
 import Data.Function ((&))
 import System.IO (readFile)
+import System.Random (StdGen(..), initStdGen, randomR)
 import Data.List (intercalate)
+import Data.List.Index (deleteAt)
 
 
-data State = State
-  { allDevs :: [String]
-  , leftDevs :: [String]
-  , sessionCount :: Int
-  } 
-
-
-initialize :: State
-initialize =  State [] [] 0
-
+data State = State [String] [String] Int
 
 main :: IO ()
 main = do
   names <- enterDev []
-  showDevs
+  (State _ _ sessions) <- chooseDev (State names names 1)
+  putStrLn $ "Good job on your " ++ show sessions ++ " sessions!" 
 
 
 enterDev :: [String] -> IO ([String])
@@ -43,13 +37,40 @@ enterDev names = do
     then do 
       putStrLn "Stopping choice..."
       pure names
-    else enterDev $ nameOrSkip:names
+    else enterDev (nameOrSkip:names)
 
 
-showDevs :: [String] -> IO ()
-showDevs devs =
-  putStrLn $ intercalate ", " devs
+chooseDev :: State -> IO (State)
+chooseDev (State allDevs leftDevs sessionCount) = do
+  gen <- (initStdGen :: IO StdGen)
+  index <- pure $ fst $ randomDev gen leftDevs
+  updatedLeftDevs <- pure $ deleteAt index leftDevs
+  putStrLn $ "Session " ++ show sessionCount ++ "."
+  putStrLn $ "Scribe: " ++ show (leftDevs !! index)
+  showDevs updatedLeftDevs
+  putStrLn "Continue? (y/n)"
+  continue <- getLine
+  handleContinue continue updatedLeftDevs 
+    where
+      handleContinue "y" withLeftDevs = 
+        if withLeftDevs == [] 
+          then chooseDev (State allDevs allDevs (sessionCount + 1))
+          else chooseDev (State allDevs withLeftDevs (sessionCount + 1))
+      handleContinue "n" withLeftDevs = pure $ State allDevs withLeftDevs sessionCount
+      handleContinue _ withLeftDevs = do
+        putStrLn "Command not recognized. Continue? (y/n)"
+        continueEntry <- getLine
+        handleContinue continueEntry withLeftDevs
+      showDevs [] = do
+        putStrLn $ "No devs left, all previous devs added to new turn."
+        putStrLn $ "Devs left this turn: " ++ intercalate ", " allDevs ++ "."
+      showDevs devs =
+        putStrLn $ "Devs left this turn: " ++ intercalate ", " devs ++ "."
 
+
+randomDev :: StdGen -> [String] -> (Int, StdGen)
+randomDev gen devs =
+  randomR (0, length devs - 1) gen
 
 getFromFile :: IO ()
 getFromFile = do
