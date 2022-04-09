@@ -5,8 +5,9 @@ module Main where
 2 : get a random element from the list - DONE
 3 : get and remove the element from the list, while incrementing the session count - DONE
 4 : restart - DONE
-4 : get a list from a file
-
+5 : get and display file argument - DONE
+6 : get a list of devs from a file
+7 : fix negative index bug when getting too few devs
 -}
 
 import Control.Monad (mapM)
@@ -14,6 +15,7 @@ import Data.Time.Clock
 import Data.Time.Calendar (fromGregorian, dayOfWeek, DayOfWeek(..), toGregorian)
 import Data.Function ((&))
 import System.IO (readFile)
+import System.Environment (getArgs)
 import System.Random (StdGen(..), initStdGen, randomR)
 import Data.List (intercalate)
 import Data.List.Index (deleteAt)
@@ -23,6 +25,8 @@ data State = State [String] [String] Int
 
 main :: IO ()
 main = do
+  args <- getArgs
+  mapM putStrLn args
   names <- enterDev []
   (State _ _ sessions) <- chooseDev (State names names 1)
   putStrLn $ "Good job on your " ++ show sessions ++ " sessions!" 
