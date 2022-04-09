@@ -6,87 +6,96 @@ module Main where
 3 : get and remove the element from the list, while incrementing the session count - DONE
 4 : restart - DONE
 5 : get and display file argument - DONE
-6 : get a list of devs from a file
-7 : fix negative index bug when getting too few devs
+6 : get a list of devs from a file - DONE
+7 : fix negative index bug when getting too few devs -- NO LONGER APPLICABLE
+8 : ???
+9 : PROFIT
+10: Add dayOfWeek feature
 -}
 
-import Control.Monad (mapM)
-import Data.Time.Clock
-import Data.Time.Calendar (fromGregorian, dayOfWeek, DayOfWeek(..), toGregorian)
+import Data.Time.Clock as Clock
+import Data.Time.Calendar as Calendar
 import Data.Function ((&))
-import System.IO (readFile)
-import System.Environment (getArgs)
-import System.Random (StdGen(..), initStdGen, randomR)
+import System.IO as IO
+import System.Environment as Environment 
 import Data.List (intercalate)
 import Data.List.Index (deleteAt)
-
-
-data State = State [String] [String] Int
+import State
+import Random
+import System.Random (StdGen(..), initStdGen)
 
 main :: IO ()
 main = do
-  args <- getArgs
-  mapM putStrLn args
-  names <- enterDev []
-  (State _ _ sessions) <- chooseDev (State names names 1)
-  putStrLn $ "Good job on your " ++ show sessions ++ " sessions!" 
+  state <- State.fromArgs =<< Environment.getArgs
+  runDevChoice state
+
+runDevChoice :: State -> IO ()
+runDevChoice state = do
+  (State allDevs leftDevs rotations) <- myUntil sessionEnds state incrementSession
+  case (State allDevs leftDevs rotations) of
+    (State _ _ (-1)) -> do
+      printHowToUse
+    (State _ _ 0) -> do putStrLn $ "Thanks for booting this program before being ready è_é" 
+    (State _ _ n) -> do putStrLn $ "Congratulations on your " ++ (show n) ++ " rotations!"
+  where
+    sessionEnds (State allDevs _ _) = 
+      allDevs == []
+    incrementSession (State allDevs leftDevs rotations)
+      | leftDevs == [] = do
+        chooseDev $ State allDevs allDevs rotations
+      | otherwise = do
+        chooseDev $ State allDevs leftDevs rotations
+    printHowToUse = do
+      putStrLn "How to use:"
+      putStrLn " $ ./chooseNext"
+      putStrLn " -- shows this information"
+      putStrLn ""
+      putStrLn " $ ./chooseNext dev1 dev2 ... nthdev"
+      putStrLn " -- for manual entry of the devs"
+      putStrLn ""
+      putStrLn " $ ./chooseNext fileName"
+      putStrLn " -- for using devs stored in a file"
+      putStrLn " -- the file should contain only one dev per line"
+      putStrLn ""
 
 
-enterDev :: [String] -> IO ([String])
-enterDev names = do 
-  currentDay <- currentDayOfWeek
-  putStrLn "Enter next dev name or (stop)"
-  nameOrSkip <- getLine
-  if nameOrSkip == "stop"
-    then do 
-      putStrLn "Stopping choice..."
-      pure names
-    else enterDev (nameOrSkip:names)
+myUntil :: (State -> Bool) -> State -> (State -> IO State) -> IO State
+myUntil _ state@(State allDevs leftDevs (-1)) _ = do
+  pure state
+myUntil stop state@(State allDevs leftDevs rotations) updateState = do
+  if stop state 
+    then do
+      putStrLn "Stopping session"
+      pure state
+    else do
+      putStrLn "Next? (y/n)"
+      continue <- IO.getLine
+      case continue of
+        "y" -> do 
+          newState <- (updateState state) 
+          myUntil stop newState updateState
+        "n" -> do 
+          pure state
+        _ -> do
+          putStrLn "Invalid input"
+          myUntil stop state updateState
 
-
-chooseDev :: State -> IO (State)
-chooseDev (State allDevs leftDevs sessionCount) = do
+chooseDev :: State.State -> IO (State.State)
+chooseDev (State allDevs leftDevs rotations) = do
   gen <- (initStdGen :: IO StdGen)
-  index <- pure $ fst $ randomDev gen leftDevs
+  index <- pure $ fst $ Random.randomDev gen leftDevs
+  putStrLn $ "Scribe: " ++ (leftDevs !! index)
   updatedLeftDevs <- pure $ deleteAt index leftDevs
-  putStrLn $ "Session " ++ show sessionCount ++ "."
-  putStrLn $ "Scribe: " ++ show (leftDevs !! index)
-  showDevs updatedLeftDevs
-  putStrLn "Continue? (y/n)"
-  continue <- getLine
-  handleContinue continue updatedLeftDevs 
-    where
-      handleContinue "y" withLeftDevs = 
-        if withLeftDevs == [] 
-          then chooseDev (State allDevs allDevs (sessionCount + 1))
-          else chooseDev (State allDevs withLeftDevs (sessionCount + 1))
-      handleContinue "n" withLeftDevs = pure $ State allDevs withLeftDevs sessionCount
-      handleContinue _ withLeftDevs = do
-        putStrLn "Command not recognized. Continue? (y/n)"
-        continueEntry <- getLine
-        handleContinue continueEntry withLeftDevs
-      showDevs [] = do
-        putStrLn $ "No devs left, all previous devs added to new turn."
-        putStrLn $ "Devs left this turn: " ++ intercalate ", " allDevs ++ "."
-      showDevs devs =
-        putStrLn $ "Devs left this turn: " ++ intercalate ", " devs ++ "."
+  putStrLn $ case updatedLeftDevs of
+    [] ->
+      "No devs left for this session, bringing everyone back: " ++ intercalate ", " allDevs
+    someDevs -> 
+      "Remaining devs for this session: " ++ intercalate ", " someDevs
+  pure $ State allDevs updatedLeftDevs (rotations + 1)
 
-
-randomDev :: StdGen -> [String] -> (Int, StdGen)
-randomDev gen devs =
-  randomR (0, length devs - 1) gen
-
-getFromFile :: IO ()
-getFromFile = do
-  putStrLn "Name of the config file, leave empty for default:"
-  fileName <- getLine
-  fileContents <- readFile (if (fileName /= "") then fileName else "devs.txt")
-  putStrLn fileContents
-
-
-currentDayOfWeek :: IO DayOfWeek
+currentDayOfWeek :: IO Calendar.DayOfWeek
 currentDayOfWeek = do
   (year, month, day) <- date
-  pure $ fromGregorian year month day & dayOfWeek
+  pure $ Calendar.fromGregorian year month day & Calendar.dayOfWeek
   where 
-    date = getCurrentTime >>= return . toGregorian . utctDay
+    date = Clock.getCurrentTime >>= return . Calendar.toGregorian . Clock.utctDay
